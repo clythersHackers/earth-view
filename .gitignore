@@ -1,0 +1,27 @@
+# Build and Qt creator output
+build/
+CMakeFiles/
+*.user
+*.qmlc
+*.jsc
+.qtc_clangd/
+.vscode/
+.idea/
+.qtcreator/
+.cache/
+
+# Autogen / meta
+*_autogen/
+meta_types/
+appearthview_qmltyperegistrations.cpp
+build/.qt/
+build/.rcc/
+
+# Third-party vendored here but not tracked
+external/nats.c/
+nats.c-main.zip
+assets/earth/ne_landmass.geojson
+
+# Misc
+*~
+*.swp

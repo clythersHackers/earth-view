@@ -1,0 +1,44 @@
+[
+  {
+    "id": "gnd_london",
+    "name": "London",
+    "lat": 51.5074,
+    "lon": -0.1278,
+    "radius_km": 1500.0
+  },
+  {
+    "id": "gnd_singapore",
+    "name": "Singapore",
+    "lat": 1.3521,
+    "lon": 103.8198,
+    "radius_km": 1600.0
+  },
+  {
+    "id": "gnd_denver",
+    "name": "Denver",
+    "lat": 39.7392,
+    "lon": -104.9903,
+    "radius_km": 1700.0
+  },
+  {
+    "id": "gnd_nz",
+    "name": "NewZealand",
+    "lat": -41.2865,
+    "lon": 174.7762,
+    "radius_km": 1600.0
+  },
+  {
+    "id": "gnd_troll",
+    "name": "Troll",
+    "lat": -72.0117,
+    "lon": 2.5350,
+    "radius_km": 1800.0
+  },
+  {
+    "id": "gnd_svalbard",
+    "name": "Svalbard",
+    "lat": 78.2232,
+    "lon": 15.6469,
+    "radius_km": 1800.0
+  }
+]
