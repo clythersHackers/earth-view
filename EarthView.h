@@ -49,6 +49,7 @@ protected:
     void hoverLeaveEvent(QHoverEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void touchEvent(QTouchEvent *event) override;
 
 signals:
     void centerLongitudeChanged();

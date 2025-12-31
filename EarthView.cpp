@@ -8,6 +8,7 @@
 #include <QSGFlatColorMaterial>
 #include <QHoverEvent>
 #include <QMouseEvent>
+#include <QTouchEvent>
 #include <cmath>
 #include <algorithm>
 
@@ -17,6 +18,7 @@ EarthView::EarthView(QQuickItem *parent)
     setFlag(QQuickItem::ItemHasContents, true);
     setAcceptHoverEvents(true);
     setAcceptedMouseButtons(Qt::AllButtons);
+    setAcceptTouchEvents(true);
     // The resource is bundled by the QML module under /EarthView/.
     m_backgroundImage = QImage(QStringLiteral(":/EarthView/assets/earth/earth-landmask-2048.png"));
 }
@@ -735,6 +737,26 @@ void EarthView::mousePressEvent(QMouseEvent *event)
         m_lastHoverHadSat = false;
     }
     QQuickItem::mousePressEvent(event);
+}
+
+void EarthView::touchEvent(QTouchEvent *event)
+{
+    if (event->points().isEmpty()) {
+        event->ignore();
+        return;
+    }
+
+    const QPointF pt = event->points().first().position();
+    const QVariantMap sat = satelliteAt(pt);
+    const bool hasSat = !sat.isEmpty();
+    if (hasSat) {
+        emit satelliteHovered(sat);
+        m_lastHoverHadSat = true;
+    } else if (m_lastHoverHadSat) {
+        emit satelliteHovered(QVariantMap());
+        m_lastHoverHadSat = false;
+    }
+    event->accept();
 }
 
 QVariantMap EarthView::satelliteAt(const QPointF &pt) const
