@@ -37,23 +37,6 @@ Window {
         onSatelliteHovered: function(satelliteInfo) { hoveredSatellite = satelliteInfo }
     }
 
-    Component.onCompleted: {
-        // Auto-load bundled sample ground stations (application-level, not inside the widget)
-        const url = Qt.resolvedUrl("assets/earth/ground_stations.json")
-        const xhr = new XMLHttpRequest()
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
-                try {
-                    earth.groundStations = JSON.parse(xhr.responseText)
-                } catch (e) {
-                    console.log("Failed to parse ground stations", e)
-                }
-            }
-        }
-        xhr.open("GET", url)
-        xhr.send()
-    }
-
     Rectangle {
         id: hoverBadge
         anchors.left: parent.left

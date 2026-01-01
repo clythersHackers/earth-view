@@ -29,6 +29,9 @@ int main(int argc, char *argv[])
             QObject::connect(feed, &OrbitFeed::satellitesUpdated, earth, [earth](const QVariantList &sats) {
                 earth->setSatellites(sats);
             });
+            QObject::connect(feed, &OrbitFeed::groundStationsUpdated, earth, [earth](const QVariantList &stations) {
+                earth->setGroundStations(stations);
+            });
             QObject::connect(feed, &OrbitFeed::statusMessage, [](const QString &msg) {
                 qInfo().noquote() << msg;
             });

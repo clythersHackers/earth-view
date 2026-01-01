@@ -85,11 +85,85 @@ void EarthView::setGroundStations(const QVariantList &stations)
     m_groundStations = stations;
     m_groundStationData.clear();
 
+    auto readField = [](const QVariantMap &m, const std::initializer_list<const char *> &keys, double &out) -> bool {
+        for (const char *k : keys) {
+            bool ok = false;
+            double val = m.value(QString::fromLatin1(k)).toDouble(&ok);
+            if (ok && std::isfinite(val)) {
+                out = val;
+                return true;
+            }
+        }
+        return false;
+    };
+
+    auto parsePoint = [&](const QVariant &v, GeoPoint &out) -> bool {
+        if (v.canConvert<QVariantMap>()) {
+            const QVariantMap m = v.toMap();
+            double lat = 0.0;
+            double lon = 0.0;
+            if (readField(m, {"lat", "Lat"}, lat) && readField(m, {"lon", "Lon"}, lon)) {
+                out.lat = lat;
+                out.lon = lon;
+                return true;
+            }
+        }
+        if (v.canConvert<QVariantList>()) {
+            const QVariantList arr = v.toList();
+            if (arr.size() >= 2) {
+                bool okLat = false;
+                bool okLon = false;
+                const double lat = arr.at(0).toDouble(&okLat);
+                const double lon = arr.at(1).toDouble(&okLon);
+                if (okLat && okLon && std::isfinite(lat) && std::isfinite(lon)) {
+                    out.lat = lat;
+                    out.lon = lon;
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    auto parseMask = [&](const QVariant &v) -> QVector<GeoPoint> {
+        QVector<GeoPoint> pts;
+        if (!v.isValid())
+            return pts;
+        const QVariantList list = v.toList();
+        pts.reserve(list.size());
+        for (const QVariant &pVar : list) {
+            GeoPoint p;
+            if (parsePoint(pVar, p))
+                pts.append(p);
+        }
+        return pts;
+    };
+
     for (const auto &v : stations) {
         const QVariantMap m = v.toMap();
-        const double lat = m.value(QStringLiteral("lat")).toDouble();
-        const double lon = m.value(QStringLiteral("lon")).toDouble();
-        const double radius = m.value(QStringLiteral("radius_km")).toDouble();
+        double lat = 0.0;
+        double lon = 0.0;
+        const bool latOk = readField(m, {"lat", "Lat"}, lat);
+        const bool lonOk = readField(m, {"lon", "Lon"}, lon);
+        QVector<GeoPoint> mask = parseMask(m.value(QStringLiteral("mask")));
+        if (mask.isEmpty())
+            mask = parseMask(m.value(QStringLiteral("boundary")));
+        if (mask.isEmpty())
+            mask = parseMask(m.value(QStringLiteral("footprint")));
+        if (mask.isEmpty())
+            mask = parseMask(m.value(QStringLiteral("points")));
+
+        if ((!latOk || !lonOk) && !mask.isEmpty()) {
+            double sumLat = 0.0;
+            double sumLon = 0.0;
+            for (const auto &p : mask) {
+                sumLat += p.lat;
+                sumLon += p.lon;
+            }
+            lat = sumLat / mask.size();
+            lon = sumLon / mask.size();
+        }
+
         if (!std::isfinite(lat) || !std::isfinite(lon))
             continue;
         if (lat < -90.0 || lat > 90.0)
@@ -97,8 +171,10 @@ void EarthView::setGroundStations(const QVariantList &stations)
         GroundStation gs;
         gs.lat = lat;
         gs.lon = lon;
-        if (std::isfinite(radius) && radius > 0.0)
-            gs.radiusKm = radius;
+        gs.mask = mask;
+        const QVariant idVar = m.value(QStringLiteral("id"), m.value(QStringLiteral("ID")));
+        if (idVar.isValid())
+            gs.id = idVar.toString();
         m_groundStationData.push_back(gs);
     }
 
@@ -268,11 +344,12 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
             if (auto *geom = dynamic_cast<QSGGeometryNode *>(child)) {
                 if (auto *mat = dynamic_cast<QSGFlatColorMaterial *>(geom->material())) {
                     const QColor c = mat->color();
-                    if (!gsFootNode && c == QColor(200, 200, 200, 90)) {
+                    const auto mode = geom->geometry() ? geom->geometry()->drawingMode() : QSGGeometry::DrawLines;
+                    if (!gsFootNode && c == QColor(90, 210, 255, 235) && mode == QSGGeometry::DrawLines) {
                         gsFootNode = geom;
                         continue;
                     }
-                    if (!gsDotNode && c == QColor(180, 180, 180, 220)) {
+                    if (!gsDotNode && c == QColor(90, 210, 255, 235) && mode == QSGGeometry::DrawTriangles) {
                         gsDotNode = geom;
                         continue;
                     }
@@ -319,14 +396,21 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
 
         // Terminator removed for now.
 
-        auto project = [&](double latDeg, double lonDeg) -> QPointF {
+        auto projectWrapped = [&](double latDeg, double lonDeg) -> QPointF {
             qreal x = rect.x() + ((lonDeg + 180.0) / 360.0) * rect.width();
             qreal y = rect.y() + ((90.0 - latDeg) / 180.0) * rect.height();
-            // apply wrap based on center longitude
             qreal localOffset = (m_centerLongitude / 360.0) * rect.width();
             x -= localOffset;
             while (x < rect.x()) x += rect.width();
             while (x > rect.x() + rect.width()) x -= rect.width();
+            return QPointF(x, y);
+        };
+
+        auto projectUnwrapped = [&](double latDeg, double lonDeg) -> QPointF {
+            qreal x = rect.x() + ((lonDeg + 180.0) / 360.0) * rect.width();
+            qreal y = rect.y() + ((90.0 - latDeg) / 180.0) * rect.height();
+            qreal localOffset = (m_centerLongitude / 360.0) * rect.width();
+            x -= localOffset;
             return QPointF(x, y);
         };
 
@@ -343,17 +427,19 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 gsDotNode = nullptr;
             }
         } else {
-            // Footprint node
+            // Footprint node (recreated each frame to avoid stale geometry)
+            // Footprint node (reuse like satellite geometry)
             if (!gsFootNode) {
                 gsFootNode = new QSGGeometryNode();
-                auto *geom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
-                geom->setDrawingMode(QSGGeometry::DrawTriangles);
-                gsFootNode->setGeometry(geom);
+                auto *gsFootGeom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
+                gsFootGeom->setDrawingMode(QSGGeometry::DrawLines);
+                gsFootGeom->setLineWidth(1.5f);
+                gsFootNode->setGeometry(gsFootGeom);
                 gsFootNode->setFlag(QSGNode::OwnsGeometry);
 
-                auto *mat = new QSGFlatColorMaterial();
-                mat->setColor(QColor(200, 200, 200, 90)); // subtle, similar to background
-                gsFootNode->setMaterial(mat);
+                auto *gsFootMat = new QSGFlatColorMaterial();
+                gsFootMat->setColor(QColor(90, 210, 255, 235)); // distinct outline
+                gsFootNode->setMaterial(gsFootMat);
                 gsFootNode->setFlag(QSGNode::OwnsMaterial);
                 contentRoot->appendChildNode(gsFootNode);
             }
@@ -365,7 +451,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 gsDotNode->setFlag(QSGNode::OwnsGeometry);
 
                 auto *mat = new QSGFlatColorMaterial();
-                mat->setColor(QColor(180, 180, 180, 220)); // slightly brighter dot
+                mat->setColor(QColor(90, 210, 255, 235)); // match outline color
                 gsDotNode->setMaterial(mat);
                 gsDotNode->setFlag(QSGNode::OwnsMaterial);
                 contentRoot->appendChildNode(gsDotNode);
@@ -375,52 +461,82 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
             const int dotSegments = 10;
             const qreal dotPxRadius = 4.0;
 
-            // Footprints: triangle lists per station, duplicating across seam
+            auto appendFan = [&](const QVector<QPointF> &ring, QVector<QPointF> &dest) {
+                if (ring.size() < 3)
+                    return;
+                const qreal w = rect.width();
+
+                qreal minX = std::numeric_limits<qreal>::max();
+                qreal maxX = -std::numeric_limits<qreal>::max();
+                QPointF centroid(0, 0);
+                for (const QPointF &p : ring) {
+                    centroid += p;
+                    minX = std::min(minX, p.x());
+                    maxX = std::max(maxX, p.x());
+                }
+                centroid /= ring.size();
+
+                const int shiftMin = static_cast<int>(std::floor((rect.x() - maxX) / w)) - 1;
+                const int shiftMax = static_cast<int>(std::ceil((rect.x() + w - minX) / w)) + 1;
+
+                for (int k = shiftMin; k <= shiftMax; ++k) {
+                    const qreal shift = k * w;
+                    QPointF shiftedCentroid = centroid + QPointF(shift, 0);
+                    if (shiftedCentroid.x() + w < rect.x() || shiftedCentroid.x() - w > rect.x() + w)
+                        continue;
+                    for (int i = 0; i < ring.size(); ++i) {
+                        const QPointF a = ring[i] + QPointF(shift, 0);
+                        const QPointF b = ring[(i + 1) % ring.size()] + QPointF(shift, 0);
+                        dest.append(shiftedCentroid);
+                        dest.append(a);
+                        dest.append(b);
+                    }
+                }
+            };
+
+            // Footprints: polyline per station (mask only), seam-aware
             {
-                const int vertsPerFoot = footSegments * 3; // triangles per ellipse
-                QVector<QPointF> centers;
-                QVector<QPointF> radii;
-                centers.reserve(m_groundStationData.size() * 2);
-                radii.reserve(m_groundStationData.size() * 2);
+                QVector<QPointF> segments;
+                const qreal w = rect.width();
+
+                auto addSegment = [&](QPointF a, QPointF b) {
+                    qreal dx = b.x() - a.x();
+                    if (dx > w / 2)
+                        b.rx() -= w;
+                    else if (dx < -w / 2)
+                        b.rx() += w;
+                    if (std::abs(b.x() - a.x()) > w)
+                        return;
+                    segments.append(a);
+                    segments.append(b);
+                };
 
                 for (const auto &gs : m_groundStationData) {
-                    const QPointF c = project(gs.lat, gs.lon);
-                    const double latRad = gs.lat * M_PI / 180.0;
-                    const double effectiveKm = (gs.radiusKm > 0.0 ? gs.radiusKm : 200.0) * 1.5;
-                    const double latDegSpan = effectiveKm / 111.0;
-                    const double lonDegSpan = effectiveKm / (111.0 * std::max(0.2, std::cos(latRad)));
-                    const qreal rx = (lonDegSpan / 360.0) * rect.width();
-                    const qreal ry = (latDegSpan / 180.0) * rect.height();
+                    if (gs.mask.isEmpty())
+                        continue;
 
-                    auto addCopy = [&](const QPointF &pt) {
-                        centers.append(pt);
-                        radii.append(QPointF(rx, ry));
-                    };
+                    QVector<QPointF> ring;
+                    ring.reserve(gs.mask.size());
+                    for (const auto &p : gs.mask)
+                        ring.append(projectWrapped(p.lat, p.lon));
 
-                    addCopy(c);
-                    if (c.x() - rx < rect.x())
-                        addCopy(QPointF(c.x() + rect.width(), c.y()));
-                    if (c.x() + rx > rect.x() + rect.width())
-                        addCopy(QPointF(c.x() - rect.width(), c.y()));
+                    if (ring.size() < 2)
+                        continue;
+
+                    ring.append(ring.first());
+
+                    for (int i = 1; i < ring.size(); ++i)
+                        addSegment(ring[i - 1], ring[i]);
                 }
 
                 QSGGeometry *geom = gsFootNode->geometry();
-                geom->allocate(centers.size() * vertsPerFoot);
+                geom->setDrawingMode(QSGGeometry::DrawLines);
+                geom->allocate(segments.size());
                 QSGGeometry::Point2D *v = geom->vertexDataAsPoint2D();
-                int idx = 0;
-                for (int i = 0; i < centers.size(); ++i) {
-                    const QPointF c = centers[i];
-                    const QPointF r = radii[i];
-                    for (int s = 0; s < footSegments; ++s) {
-                        const qreal a0 = (2 * M_PI * s) / footSegments;
-                        const qreal a1 = (2 * M_PI * (s + 1)) / footSegments;
-                        const QPointF p0 = c + QPointF(std::cos(a0) * r.x(), std::sin(a0) * r.y());
-                        const QPointF p1 = c + QPointF(std::cos(a1) * r.x(), std::sin(a1) * r.y());
-                        v[idx++].set(c.x(), c.y());
-                        v[idx++].set(p0.x(), p0.y());
-                        v[idx++].set(p1.x(), p1.y());
-                    }
+                for (int i = 0; i < segments.size(); ++i) {
+                    v[i].set(segments[i].x(), segments[i].y());
                 }
+                gsFootNode->setGeometry(geom);
                 gsFootNode->markDirty(QSGNode::DirtyGeometry);
             }
 
@@ -430,7 +546,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 QVector<QPointF> centers;
                 centers.reserve(m_groundStationData.size() * 2);
                 for (const auto &gs : m_groundStationData) {
-                    const QPointF c = project(gs.lat, gs.lon);
+                    const QPointF c = projectWrapped(gs.lat, gs.lon);
                     centers.append(c);
                     if (c.x() < rect.x() + dotPxRadius)
                         centers.append(QPointF(c.x() + rect.width(), c.y()));
@@ -490,7 +606,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 P.normalize();
                 const double lat = std::asin(std::clamp(static_cast<double>(P.z()), -1.0, 1.0)) * 180.0 / M_PI;
                 const double lon = std::atan2(P.y(), P.x()) * 180.0 / M_PI;
-                pts.append(project(lat, lon));
+                pts.append(projectWrapped(lat, lon));
             }
         return pts;
     };
@@ -500,7 +616,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
         QVariantMap best;
         qreal bestDist2 = maxDistPx * maxDistPx;
         for (const auto &sat : m_satelliteData) {
-            const QPointF c = project(sat.lat, sat.lon);
+            const QPointF c = projectWrapped(sat.lat, sat.lon);
             const qreal dx = c.x() - pt.x();
             const qreal dy = c.y() - pt.y();
             const qreal d2 = dx * dx + dy * dy;
@@ -637,7 +753,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 QVector<QPointF> centers;
                 centers.reserve(m_satelliteData.size() * 2);
                 for (const auto &sat : m_satelliteData) {
-                    const QPointF c = project(sat.lat, sat.lon);
+                    const QPointF c = projectWrapped(sat.lat, sat.lon);
                     centers.append(c);
                     if (c.x() < rect.x() + dotPxRadius)
                         centers.append(QPointF(c.x() + rect.width(), c.y()));

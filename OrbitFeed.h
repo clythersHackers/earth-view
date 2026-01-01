@@ -2,6 +2,10 @@
 
 #include <QObject>
 #include <QVariantList>
+#include <QMutex>
+#include <QHash>
+#include <atomic>
+#include <thread>
 
 extern "C" {
 #include "nats.h"
@@ -20,14 +24,28 @@ public:
 
 signals:
     void satellitesUpdated(const QVariantList &satellites);
+    void groundStationsUpdated(const QVariantList &groundStations);
     void statusMessage(const QString &msg);
 
 private:
     static void onMessage(natsConnection *, natsSubscription *, natsMsg *msg, void *closure);
     void handleMessage(natsMsg *msg);
+    void startGroundStationWatcher();
+    void stopGroundStationWatcher();
+    void watchGroundStations();
+    void handleGroundStationEntry(kvEntry *entry);
+    QVariantMap parseGroundStationPayload(const QByteArray &payload) const;
+    void publishGroundStations();
     void disconnect();
 
     QString m_subject;
     natsConnection *m_conn {nullptr};
     natsSubscription *m_sub {nullptr};
+    jsCtx *m_js {nullptr};
+    kvStore *m_kv {nullptr};
+    kvWatcher *m_kvWatcher {nullptr};
+    std::thread m_kvThread;
+    std::atomic<bool> m_kvThreadRunning {false};
+    mutable QMutex m_groundStationMutex;
+    QHash<QString, QVariantMap> m_groundStations;
 };

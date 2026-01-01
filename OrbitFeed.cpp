@@ -1,12 +1,14 @@
 #include "OrbitFeed.h"
 
-#include "nats.h"
-
 #include <QCborValue>
 #include <QCborMap>
 #include <QCborArray>
+#include <QCborParserError>
 #include <QByteArray>
 #include <QMetaObject>
+#include <QMutexLocker>
+#include <cmath>
+#include <limits>
 
 OrbitFeed::OrbitFeed(QObject *parent)
     : QObject(parent)
@@ -44,6 +46,8 @@ void OrbitFeed::start()
         return;
     }
 
+    startGroundStationWatcher();
+
     emit statusMessage(QStringLiteral("Subscribed to %1").arg(QString::fromUtf8(subjUtf8)));
 }
 
@@ -54,10 +58,20 @@ void OrbitFeed::stop()
 
 void OrbitFeed::disconnect()
 {
+    stopGroundStationWatcher();
     if (m_sub) {
         natsSubscription_Destroy(m_sub);
         m_sub = nullptr;
     }
+    if (m_js) {
+        jsCtx_Destroy(m_js);
+        m_js = nullptr;
+    }
+    if (m_kv) {
+        kvStore_Destroy(m_kv);
+        m_kv = nullptr;
+    }
+    // Watcher is destroyed by stopGroundStationWatcher.
     if (m_conn) {
         natsConnection_Destroy(m_conn);
         m_conn = nullptr;
@@ -149,4 +163,305 @@ void OrbitFeed::handleMessage(natsMsg *msg)
     }
 
     natsMsg_Destroy(msg);
+}
+
+void OrbitFeed::startGroundStationWatcher()
+{
+    if (!m_conn || m_kvWatcher)
+        return;
+
+    jsOptions jsOpts;
+    jsOptions_Init(&jsOpts);
+    natsStatus s = natsConnection_JetStream(&m_js, m_conn, &jsOpts);
+    if (s != NATS_OK) {
+        emit statusMessage(QStringLiteral("JetStream init failed: %1").arg(QString::fromLatin1(natsStatus_GetText(s))));
+        if (m_js) {
+            jsCtx_Destroy(m_js);
+            m_js = nullptr;
+        }
+        return;
+    }
+
+    s = js_KeyValue(&m_kv, m_js, "mgs");
+    if (s != NATS_OK) {
+        emit statusMessage(QStringLiteral("KV bind failed: %1").arg(QString::fromLatin1(natsStatus_GetText(s))));
+        if (m_kv) {
+            kvStore_Destroy(m_kv);
+            m_kv = nullptr;
+        }
+        if (m_js) {
+            jsCtx_Destroy(m_js);
+            m_js = nullptr;
+        }
+        return;
+    }
+
+    kvWatchOptions opts;
+    kvWatchOptions_Init(&opts);
+    opts.IgnoreDeletes = false;
+    opts.UpdatesOnly = false;
+
+    s = kvStore_Watch(&m_kvWatcher, m_kv, "m.gs.*.mask", &opts);
+    if (s != NATS_OK) {
+        emit statusMessage(QStringLiteral("KV watch failed: %1").arg(QString::fromLatin1(natsStatus_GetText(s))));
+        if (m_kvWatcher) {
+            kvWatcher_Destroy(m_kvWatcher);
+            m_kvWatcher = nullptr;
+        }
+        if (m_kv) {
+            kvStore_Destroy(m_kv);
+            m_kv = nullptr;
+        }
+        if (m_js) {
+            jsCtx_Destroy(m_js);
+            m_js = nullptr;
+        }
+        return;
+    }
+
+    m_kvThreadRunning = true;
+    m_kvThread = std::thread([this]() { watchGroundStations(); });
+}
+
+void OrbitFeed::stopGroundStationWatcher()
+{
+    m_kvThreadRunning = false;
+    if (m_kvWatcher) {
+        kvWatcher_Stop(m_kvWatcher);
+    }
+    if (m_kvThread.joinable()) {
+        m_kvThread.join();
+    }
+    if (m_kvWatcher) {
+        kvWatcher_Destroy(m_kvWatcher);
+        m_kvWatcher = nullptr;
+    }
+    if (m_kv) {
+        kvStore_Destroy(m_kv);
+        m_kv = nullptr;
+    }
+    if (m_js) {
+        jsCtx_Destroy(m_js);
+        m_js = nullptr;
+    }
+    {
+        QMutexLocker locker(&m_groundStationMutex);
+        m_groundStations.clear();
+    }
+    publishGroundStations();
+}
+
+void OrbitFeed::watchGroundStations()
+{
+    while (m_kvThreadRunning && m_kvWatcher) {
+        kvEntry *entry = nullptr;
+        natsStatus s = kvWatcher_Next(&entry, m_kvWatcher, 500);
+        if (!m_kvThreadRunning) {
+            if (entry) {
+                kvEntry_Destroy(entry);
+                entry = nullptr;
+            }
+            break;
+        }
+        if (s == NATS_TIMEOUT) {
+            continue;
+        }
+        if (s != NATS_OK) {
+            if (entry) {
+                kvEntry_Destroy(entry);
+                entry = nullptr;
+            }
+            emit statusMessage(QStringLiteral("KV watch stopped: %1").arg(QString::fromLatin1(natsStatus_GetText(s))));
+            m_kvThreadRunning = false;
+            break;
+        }
+        if (!entry) {
+            continue; // initial snapshot marker
+        }
+        handleGroundStationEntry(entry);
+        kvEntry_Destroy(entry);
+    }
+}
+
+void OrbitFeed::handleGroundStationEntry(kvEntry *entry)
+{
+    if (!entry)
+        return;
+
+    const char *keyPtr = kvEntry_Key(entry);
+    if (!keyPtr)
+        return;
+    const QString key = QString::fromLatin1(keyPtr);
+    const QString prefix = QStringLiteral("m.gs.");
+    const QString suffix = QStringLiteral(".mask");
+    if (!key.startsWith(prefix) || !key.endsWith(suffix))
+        return;
+    const QString id = key.mid(prefix.size(), key.size() - prefix.size() - suffix.size());
+    if (id.isEmpty())
+        return;
+
+    const kvOperation op = kvEntry_Operation(entry);
+    if (op == kvOp_Delete || op == kvOp_Purge) {
+        {
+            QMutexLocker locker(&m_groundStationMutex);
+            m_groundStations.remove(id);
+        }
+        publishGroundStations();
+        return;
+    }
+
+    const void *valPtr = kvEntry_Value(entry);
+    const int len = kvEntry_ValueLen(entry);
+    if (!valPtr || len <= 0)
+        return;
+
+    const QByteArray payload(static_cast<const char *>(valPtr), len);
+    QVariantMap station = parseGroundStationPayload(payload);
+    if (station.isEmpty())
+        return;
+    station.insert(QStringLiteral("id"), id);
+
+    {
+        QMutexLocker locker(&m_groundStationMutex);
+        m_groundStations.insert(id, station);
+    }
+    publishGroundStations();
+}
+
+QVariantMap OrbitFeed::parseGroundStationPayload(const QByteArray &payload) const
+{
+    QCborParserError err;
+    QCborValue val = QCborValue::fromCbor(payload, &err);
+    if (err.error != QCborError::NoError)
+        return {};
+
+    auto readNumber = [](const QCborMap &m, const std::initializer_list<QCborValue> &keys, double &out) -> bool {
+        for (const auto &k : keys) {
+            auto it = m.constFind(k);
+            if (it != m.constEnd()) {
+                const double v = it->toDouble(std::numeric_limits<double>::quiet_NaN());
+                if (std::isfinite(v)) {
+                    out = v;
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    auto parsePoint = [&](const QCborValue &v, double &lat, double &lon) -> bool {
+        if (v.isMap()) {
+            const QCborMap m = v.toMap();
+            return readNumber(m, {QCborValue(QStringLiteral("Lat")), QCborValue(QStringLiteral("lat"))}, lat)
+                && readNumber(m, {QCborValue(QStringLiteral("Lon")), QCborValue(QStringLiteral("lon"))}, lon);
+        }
+        if (v.isArray()) {
+            const QCborArray arr = v.toArray();
+            if (arr.size() >= 2) {
+                const double la = arr.at(0).toDouble(std::numeric_limits<double>::quiet_NaN());
+                const double lo = arr.at(1).toDouble(std::numeric_limits<double>::quiet_NaN());
+                if (std::isfinite(la) && std::isfinite(lo)) {
+                    lat = la;
+                    lon = lo;
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    auto parsePointsArray = [&](const QCborArray &arr) -> QVariantList {
+        QVariantList pts;
+        for (const QCborValue &item : arr) {
+            double lat = std::numeric_limits<double>::quiet_NaN();
+            double lon = std::numeric_limits<double>::quiet_NaN();
+            if (parsePoint(item, lat, lon)) {
+                QVariantMap p;
+                p.insert(QStringLiteral("lat"), lat);
+                p.insert(QStringLiteral("lon"), lon);
+                pts.append(p);
+            }
+        }
+        return pts;
+    };
+
+    QVariantList mask;
+    double lat = std::numeric_limits<double>::quiet_NaN();
+    double lon = std::numeric_limits<double>::quiet_NaN();
+    double radiusKm = std::numeric_limits<double>::quiet_NaN();
+
+    if (val.isMap()) {
+        const QCborMap m = val.toMap();
+        readNumber(m, {QCborValue(QStringLiteral("Lat")), QCborValue(QStringLiteral("lat"))}, lat);
+        readNumber(m, {QCborValue(QStringLiteral("Lon")), QCborValue(QStringLiteral("lon"))}, lon);
+        readNumber(m, {QCborValue(QStringLiteral("radius_km")), QCborValue(QStringLiteral("RadiusKm")), QCborValue(QStringLiteral("radiusKm")), QCborValue(QStringLiteral("radius"))}, radiusKm);
+
+        auto pick = [&](const std::initializer_list<QCborValue> &keys) -> QCborValue {
+            for (const auto &k : keys) {
+                auto it = m.constFind(k);
+                if (it != m.constEnd())
+                    return it.value();
+            }
+            return QCborValue();
+        };
+
+        auto tryParseMask = [&](const QCborValue &candidate) {
+            if (!candidate.isArray())
+                return;
+            QVariantList pts = parsePointsArray(candidate.toArray());
+            if (!pts.isEmpty())
+                mask = pts;
+        };
+
+        tryParseMask(pick({QCborValue(QStringLiteral("mask")), QCborValue(QStringLiteral("Mask"))}));
+        if (mask.isEmpty())
+            tryParseMask(pick({QCborValue(QStringLiteral("boundary")), QCborValue(QStringLiteral("Boundary"))}));
+        if (mask.isEmpty())
+            tryParseMask(pick({QCborValue(QStringLiteral("footprint")), QCborValue(QStringLiteral("Footprint"))}));
+        if (mask.isEmpty())
+            tryParseMask(pick({QCborValue(QStringLiteral("points")), QCborValue(QStringLiteral("Points"))}));
+        if (mask.isEmpty() && val.isArray())
+            mask = parsePointsArray(val.toArray());
+    } else if (val.isArray()) {
+        mask = parsePointsArray(val.toArray());
+    }
+
+    if ((std::isnan(lat) || std::isnan(lon)) && !mask.isEmpty()) {
+        double sumLat = 0.0;
+        double sumLon = 0.0;
+        for (const auto &pVar : mask) {
+            const QVariantMap p = pVar.toMap();
+            sumLat += p.value(QStringLiteral("lat")).toDouble();
+            sumLon += p.value(QStringLiteral("lon")).toDouble();
+        }
+        lat = sumLat / mask.size();
+        lon = sumLon / mask.size();
+    }
+
+    QVariantMap out;
+    if (std::isfinite(lat) && std::isfinite(lon)) {
+        out.insert(QStringLiteral("lat"), lat);
+        out.insert(QStringLiteral("lon"), lon);
+    }
+    if (!mask.isEmpty())
+        out.insert(QStringLiteral("mask"), mask);
+    if (std::isfinite(radiusKm))
+        out.insert(QStringLiteral("radius_km"), radiusKm);
+    return out;
+}
+
+void OrbitFeed::publishGroundStations()
+{
+    QVariantList stations;
+    {
+        QMutexLocker locker(&m_groundStationMutex);
+        stations.reserve(m_groundStations.size());
+        for (auto it = m_groundStations.constBegin(); it != m_groundStations.constEnd(); ++it)
+            stations.append(it.value());
+    }
+
+    QMetaObject::invokeMethod(
+        this,
+        [this, stations]() { emit groundStationsUpdated(stations); },
+        Qt::QueuedConnection);
 }

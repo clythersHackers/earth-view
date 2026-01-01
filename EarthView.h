@@ -6,6 +6,7 @@
 #include <QSGTexture>
 #include <QVariantList>
 #include <QVector>
+#include <QString>
 #include <limits>
 
 #include <QtQml/qqmlregistration.h>
@@ -73,10 +74,17 @@ private:
     QVariantList m_groundStations;
     QVariantList m_satellites;
 
+    struct GeoPoint {
+        double lat {0.0};
+        double lon {0.0};
+    };
+
     struct GroundStation {
         double lat {0.0};
         double lon {0.0};
         double radiusKm {0.0};
+        QString id;
+        QVector<GeoPoint> mask;
     };
     QVector<GroundStation> m_groundStationData;
 

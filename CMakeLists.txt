@@ -26,7 +26,6 @@ qt_add_qml_module(appEarthView
         Main.qml
     RESOURCES
         assets/earth/earth-landmask-2048.png
-        assets/earth/ground_stations.json
     SOURCES
         EarthView.cpp
         EarthView.h
