@@ -80,6 +80,17 @@ void EarthView::setRotatePortrait(bool rotate)
     update();
 }
 
+void EarthView::setAccentColor(const QColor &color)
+{
+    if (!color.isValid())
+        return;
+    if (m_accentColor == color)
+        return;
+    m_accentColor = color;
+    emit accentColorChanged();
+    update();
+}
+
 void EarthView::setGroundStations(const QVariantList &stations)
 {
     m_groundStations = stations;
@@ -323,9 +334,9 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
 
     if (m_texture) {
         const QColor satPastColor = QColor(180, 200, 220, 140);
-        const QColor satFutureColor = QColor(120, 190, 255, 220);
+        const QColor satFutureColor = QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 220);
         const QColor satColor = QColor(satPastColor.red(), satPastColor.green(), satPastColor.blue(), 240); // dots match past-track hue
-        const QColor gsColor = QColor(90, 210, 255, 235);
+        const QColor gsColor = QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 235);
         bool doRotate = false;
         const QRectF bounds = boundingRect();
         const QRectF rect = viewRect(doRotate);

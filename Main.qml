@@ -69,6 +69,7 @@ ApplicationWindow {
         id: earth
         objectName: "earthView"
         anchors.fill: parent
+        accentColor: Material.accent
         onSatelliteHovered: function(satelliteInfo) { hoveredSatellite = satelliteInfo }
         onGroundStationHovered: function(groundStationInfo) { hoveredGroundStation = groundStationInfo }
     }

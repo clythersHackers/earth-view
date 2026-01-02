@@ -7,6 +7,7 @@
 #include <QVariantList>
 #include <QVector>
 #include <QString>
+#include <QColor>
 #include <limits>
 
 #include <QtQml/qqmlregistration.h>
@@ -20,6 +21,7 @@ public:
     Q_PROPERTY(double centerLongitude READ centerLongitude WRITE setCenterLongitude NOTIFY centerLongitudeChanged)
     Q_PROPERTY(bool fitWorld READ fitWorld WRITE setFitWorld NOTIFY fitWorldChanged)
     Q_PROPERTY(bool rotatePortrait READ rotatePortrait WRITE setRotatePortrait NOTIFY rotatePortraitChanged)
+    Q_PROPERTY(QColor accentColor READ accentColor WRITE setAccentColor NOTIFY accentColorChanged)
     Q_PROPERTY(QVariantList groundStations READ groundStations WRITE setGroundStations NOTIFY groundStationsChanged)
     Q_PROPERTY(QVariantList satellites READ satellites WRITE setSatellites NOTIFY satellitesChanged)
 
@@ -33,6 +35,9 @@ public:
 
     bool rotatePortrait() const { return m_rotatePortrait; }
     void setRotatePortrait(bool rotate);
+
+    QColor accentColor() const { return m_accentColor; }
+    void setAccentColor(const QColor &color);
 
     QVariantList groundStations() const { return m_groundStations; }
     void setGroundStations(const QVariantList &stations);
@@ -56,6 +61,7 @@ signals:
     void centerLongitudeChanged();
     void fitWorldChanged();
     void rotatePortraitChanged();
+    void accentColorChanged();
     void groundStationsChanged();
     void satellitesChanged();
     void satelliteHovered(const QVariantMap &satelliteInfo);
@@ -73,6 +79,7 @@ private:
     double m_centerLongitude {0.0};
     bool m_fitWorld {true};
     bool m_rotatePortrait {false};
+    QColor m_accentColor {QColor(90, 210, 255)}; // default pale/electric blue
     QVariantList m_groundStations;
     QVariantList m_satellites;
 
