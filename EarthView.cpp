@@ -470,7 +470,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 gsFootNode = new QSGGeometryNode();
                 auto *gsFootGeom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
                 gsFootGeom->setDrawingMode(QSGGeometry::DrawLines);
-                gsFootGeom->setLineWidth(1.5f);
+                //gsFootGeom->setLineWidth(1.5f); // allow minimal line width
                 gsFootNode->setGeometry(gsFootGeom);
                 gsFootNode->setFlag(QSGNode::OwnsGeometry);
 
@@ -687,6 +687,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 satPastNode = new QSGGeometryNode();
                 auto *geom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
                 geom->setDrawingMode(QSGGeometry::DrawLines);
+                geom->setLineWidth(0.5f);
                 satPastNode->setGeometry(geom);
                 satPastNode->setFlag(QSGNode::OwnsGeometry);
                 auto *mat = new QSGFlatColorMaterial();
@@ -699,6 +700,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 satFutureNode = new QSGGeometryNode();
                 auto *geom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
                 geom->setDrawingMode(QSGGeometry::DrawLines);
+                geom->setLineWidth(0.5f);
                 satFutureNode->setGeometry(geom);
                 satFutureNode->setFlag(QSGNode::OwnsGeometry);
                 auto *mat = new QSGFlatColorMaterial();
