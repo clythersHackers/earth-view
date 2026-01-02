@@ -322,6 +322,10 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
     }
 
     if (m_texture) {
+        const QColor satPastColor = QColor(180, 200, 220, 140);
+        const QColor satFutureColor = QColor(120, 190, 255, 220);
+        const QColor satColor = QColor(satPastColor.red(), satPastColor.green(), satPastColor.blue(), 240); // dots match past-track hue
+        const QColor gsColor = QColor(90, 210, 255, 235);
         bool doRotate = false;
         const QRectF bounds = boundingRect();
         const QRectF rect = viewRect(doRotate);
@@ -367,23 +371,23 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 if (auto *mat = dynamic_cast<QSGFlatColorMaterial *>(geom->material())) {
                     const QColor c = mat->color();
                     const auto mode = geom->geometry() ? geom->geometry()->drawingMode() : QSGGeometry::DrawLines;
-                    if (!gsFootNode && c == QColor(90, 210, 255, 235) && mode == QSGGeometry::DrawLines) {
+                    if (!gsFootNode && c == gsColor && mode == QSGGeometry::DrawLines) {
                         gsFootNode = geom;
                         continue;
                     }
-                    if (!gsDotNode && c == QColor(90, 210, 255, 235) && mode == QSGGeometry::DrawTriangles) {
+                    if (!gsDotNode && c == gsColor && mode == QSGGeometry::DrawTriangles) {
                         gsDotNode = geom;
                         continue;
                     }
-                    if (!satNode && c == QColor(220, 240, 255, 240)) {
+                    if (!satNode && c == satColor) {
                         satNode = geom;
                         continue;
                     }
-                    if (!satPastNode && c == QColor(180, 200, 220, 140)) {
+                    if (!satPastNode && c == satPastColor) {
                         satPastNode = geom;
                         continue;
                     }
-                    if (!satFutureNode && c == QColor(120, 190, 255, 220)) {
+                    if (!satFutureNode && c == satFutureColor) {
                         satFutureNode = geom;
                         continue;
                     }
@@ -460,7 +464,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 gsFootNode->setFlag(QSGNode::OwnsGeometry);
 
                 auto *gsFootMat = new QSGFlatColorMaterial();
-                gsFootMat->setColor(QColor(90, 210, 255, 235)); // distinct outline
+                gsFootMat->setColor(gsColor); // distinct outline
                 gsFootNode->setMaterial(gsFootMat);
                 gsFootNode->setFlag(QSGNode::OwnsMaterial);
                 contentRoot->appendChildNode(gsFootNode);
@@ -473,7 +477,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 gsDotNode->setFlag(QSGNode::OwnsGeometry);
 
                 auto *mat = new QSGFlatColorMaterial();
-                mat->setColor(QColor(90, 210, 255, 235)); // match outline color
+                mat->setColor(gsColor); // match outline color
                 gsDotNode->setMaterial(mat);
                 gsDotNode->setFlag(QSGNode::OwnsMaterial);
                 contentRoot->appendChildNode(gsDotNode);
@@ -675,7 +679,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 satPastNode->setGeometry(geom);
                 satPastNode->setFlag(QSGNode::OwnsGeometry);
                 auto *mat = new QSGFlatColorMaterial();
-                mat->setColor(QColor(180, 200, 220, 140));
+                mat->setColor(satPastColor);
                 satPastNode->setMaterial(mat);
                 satPastNode->setFlag(QSGNode::OwnsMaterial);
                 contentRoot->appendChildNode(satPastNode);
@@ -687,7 +691,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 satFutureNode->setGeometry(geom);
                 satFutureNode->setFlag(QSGNode::OwnsGeometry);
                 auto *mat = new QSGFlatColorMaterial();
-                mat->setColor(QColor(120, 190, 255, 220));
+                mat->setColor(satFutureColor);
                 satFutureNode->setMaterial(mat);
                 satFutureNode->setFlag(QSGNode::OwnsMaterial);
                 contentRoot->appendChildNode(satFutureNode);
@@ -700,7 +704,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                 satNode->setFlag(QSGNode::OwnsGeometry);
 
                 auto *mat = new QSGFlatColorMaterial();
-                mat->setColor(QColor(220, 240, 255, 240));
+                mat->setColor(satColor); // slightly darker for light backgrounds
                 satNode->setMaterial(mat);
                 satNode->setFlag(QSGNode::OwnsMaterial);
                 contentRoot->appendChildNode(satNode);
