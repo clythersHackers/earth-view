@@ -12,8 +12,7 @@ ApplicationWindow {
 
     // Follow desktop theme using Material style
     Material.theme: Material.System
-    Material.primary: Material.Indigo
-    Material.accent: Material.Indigo
+    Material.accent: Material.DeepPurple
     color: Material.background
     readonly property color textColor: Material.foreground
     readonly property color surfaceColor: Qt.rgba(Material.background.r, Material.background.g, Material.background.b, 0.95)
@@ -78,22 +77,20 @@ ApplicationWindow {
         id: hoverBadge
         anchors.left: parent.left
         anchors.top: parent.top
-        anchors.margins: 8
-        radius: 6
+        anchors.margins: 6
+        radius: 4
         color: surfaceColor
         opacity: 0.95
         border.color: borderColor
         border.width: 1
         z: 2
-        width: hoverText.implicitWidth + 16
-        height: hoverText.implicitHeight + 12
+        width: hoverText.implicitWidth + 12
+        height: hoverText.implicitHeight + 10
 
-        Text {
+        Label {
             id: hoverText
             anchors.fill: parent
-            anchors.margins: 8
-            color: textColor
-            font.pixelSize: 13
+            anchors.margins: 6
             wrapMode: Text.NoWrap
             text: formatBadge()
         }
@@ -104,25 +101,20 @@ ApplicationWindow {
             left: parent.left
             right: parent.right
             bottom: parent.bottom
-            margins: 4
+            margins: 2
         }
-        height: 52
-        radius: 6
+        height: 44
+        radius: 4
         color: surfaceColor
         opacity: 0.95
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 6
-            spacing: 8
+            anchors.margins: 2
+            spacing: 2
 
-            Text {
+            Label {
                 text: "Center"
-                color: textColor
-                font.pixelSize: 14
-                width: 80
-                verticalAlignment: Text.AlignVCenter
-                Layout.alignment: Qt.AlignVCenter
             }
 
             Slider {
@@ -137,10 +129,7 @@ ApplicationWindow {
             TextField {
                 id: lonField
                 text: earth.centerLongitude.toFixed(1)
-                color: textColor
-                font.pixelSize: 14
-                Layout.preferredWidth: 70
-                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: 68
                 inputMethodHints: Qt.ImhFormattedNumbersOnly
                 onEditingFinished: {
                     const v = parseFloat(text)
@@ -156,7 +145,6 @@ ApplicationWindow {
                 text: "Fit"
                 checked: earth.fitWorld
                 onToggled: earth.fitWorld = checked
-                Layout.alignment: Qt.AlignVCenter
             }
 
             CheckBox {
@@ -164,7 +152,6 @@ ApplicationWindow {
                 text: "Rotate"
                 checked: earth.rotatePortrait
                 onToggled: earth.rotatePortrait = checked
-                Layout.alignment: Qt.AlignVCenter
             }
         }
     }
