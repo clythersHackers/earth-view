@@ -35,13 +35,32 @@
 - Rule: if `abs(lon[i] - lon[i-1]) > 180°`, treat as a seam crossing and draw resulting segments separately.
 - Applies to satellite tracks, coverage polygons, and the terminator line.
 
-## Data Model (NATS)
+## Data Model
 
-### Satellites (pub/sub)
+### Schema (inputs to EarthView)
+
+EarthView consumes two payload types (regardless of transport):
+
+- **Satellites**: list of maps
+  - Required: `Lat`, `Lon` (degrees; lat in [-90, 90], lon in [-180, 180]); optionally `ID`/`id`.
+  - Optional: `Alt`/`alt` (km), `LatPast`/`LonPast`, `LatFuture`/`LonFuture` (degrees) for short past/future track segments.
+  - Field names are case-tolerant (`lat`/`Lat`, `lon`/`Lon`, etc.); entries with non-finite coords are ignored.
+  - Payload is handed directly to `EarthView::setSatellites(const QVariantList &)`; extra fields are preserved in the hover signal.
+
+- **Ground stations**: list of maps
+  - Position: `lat`/`Lat`, `lon`/`Lon` (degrees). If absent but a mask is present, the centroid of the mask is used.
+  - Footprint/mask (optional): array under `mask`/`Mask`, `boundary`/`footprint`/`points`; each point is `[lat, lon]` or `{lat, lon}`.
+  - Optional radius: `radius_km`/`RadiusKm`/`radiusKm`/`radius` (km).
+  - Optional ID: `id`/`ID` (otherwise empty).
+  - Payload is handed to `EarthView::setGroundStations(const QVariantList &)`.
+
+All geometry is expected in WGS84 lat/lon; EarthView handles projection, seam-splitting, and rendering. Invalid or out-of-range entries are skipped.
+
+### Satellites (NATS pub/sub)
 - Messages carry truth data only: time reference; lat/lon/alt (or ECEF); optional sampled past/future track points; optional coverage parameters; status/health.
 - Altitude does not affect map position but does affect coverage & visibility.
 
-### Ground Stations (KV + pub/sub)
+### Ground Stations (NATS KV + pub/sub)
 - KV stores static definitions: lat/lon/alt, masks, optionally precomputed footprint polygons (e.g., 72 points = 5deg).
 - Pub/sub carries dynamic status: availability, contact state, alarms.
 - Geometry published in NATS is WGS84 lat/lon, never screen-space.
@@ -62,6 +81,7 @@
 - Goal is very lightweight rendering & smooth performance on low-end devices e.g. in WASM.
 - Coupling to NATS messages/KV is at application level
 - All heavy rendering stays in one C++ `QQuickItem`.
+
 
 ## License
 
