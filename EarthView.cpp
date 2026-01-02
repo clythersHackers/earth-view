@@ -12,6 +12,9 @@
 #include <cmath>
 #include <algorithm>
 
+// Copyright (c) 2026 Andy Armitage
+// This source is distributed under the Mozilla Public License 2.0; see LICENSE.txt.
+
 EarthView::EarthView(QQuickItem *parent)
     : QQuickItem(parent)
 {

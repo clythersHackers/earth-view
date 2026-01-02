@@ -63,3 +63,6 @@
 - Coupling to NATS messages/KV is at application level
 - All heavy rendering stays in one C++ `QQuickItem`.
 
+## License
+
+This project is distributed under the Mozilla Public License 2.0. See `LICENSE.txt` for details.

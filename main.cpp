@@ -5,6 +5,9 @@
 #include "EarthView.h"
 #include "OrbitFeed.h"
 
+// Copyright (c) 2026 Andy Armitage
+// This source is distributed under the Mozilla Public License 2.0; see LICENSE.txt.
+
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);

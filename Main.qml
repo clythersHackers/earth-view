@@ -4,6 +4,9 @@ import QtQuick.Layouts
 import QtQuick.Controls.Material
 import EarthView
 
+// Copyright (c) 2026 Andy Armitage
+// This source is distributed under the Mozilla Public License 2.0; see LICENSE.txt.
+
 ApplicationWindow {
     width: 640
     height: 480
