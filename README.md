@@ -3,13 +3,15 @@
 ## Purpose
 - Flat Earth overview for satellite monitoring: satellites, ground tracks (past/future), coverage/visibility shapes, ground stations, optional day/night terminator.
 - Operator overview, not a GIS/map app; aims for correctness, deterministic behaviour, and smooth performance on phones and WASM with minimal UI.
+- Reusable `EarthOverviewItem` with correct seam handling, subdued background, and smooth performance on desktop/phone/WASM.
+- The bundled Qt/QML application is for testing & development only; not a reference UI.
 
 ## High-Level Design
 
 ### Core Principles
 - Single renderer: one custom C++ `QQuickItem` draws background and overlays via the GPU scenegraph (no Canvas/runtime SVG, no per-satellite QML items).
 - Flat equirectangular projection: latitude → Y, longitude → X; polar distortion is acceptable.
-- Viewer owns projection; NATS data stays WGS84/ECEF. Projection, centring, and seam handling live in the view.
+- Viewer owns projection; NATS data is provided in WGS84/ECEF. Projection, centring, and seam handling live in the view.
 
 ### Earth Background
 - Single bundled RGBA PNG, equirectangular 2:1, desaturated/low contrast; land mid-grey and partially transparent, ocean more transparent, no labels/borders.
@@ -37,12 +39,12 @@
 
 ### Satellites (pub/sub)
 - Messages carry truth data only: time reference; lat/lon/alt (or ECEF); optional sampled past/future track points; optional coverage parameters; status/health.
-- Altitude does not affect map position but does affect coverage, visibility, and lighting.
+- Altitude does not affect map position but does affect coverage & visibility.
 
 ### Ground Stations (KV + pub/sub)
-- KV stores static definitions: lat/lon/alt, masks, optionally precomputed footprint polygons (e.g., 64 points).
+- KV stores static definitions: lat/lon/alt, masks, optionally precomputed footprint polygons (e.g., 72 points = 5deg).
 - Pub/sub carries dynamic status: availability, contact state, alarms.
-- Geometry published in NATS must always be WGS84 lat/lon, never screen-space.
+- Geometry published in NATS is WGS84 lat/lon, never screen-space.
 
 ### View State (Local Only)
 - Per-user/device, not shared: `centerLongitude`, zoom (if supported), aspect-ratio dependent behaviour, selection state, declutter level.
@@ -56,10 +58,8 @@
 ## Out of Scope
 - Not a map engine/Qt Location/Cesium, not SVG- or Canvas-based, not free-pan/zoom GIS.
 
-## Implementation Constraints (Important)
-- No QML Canvas/geometry in QML, no `Repeater` for satellites, no mass animations, no runtime SVG rasterisation, no coupling of rendering logic to NATS semantics.
+## Implementation Constraints
+- Goal is very lightweight rendering & smooth performance on low-end devices e.g. in WASM.
+- Coupling to NATS messages/KV is at application level
 - All heavy rendering stays in one C++ `QQuickItem`.
 
-## Goal State
-- Reusable `EarthOverviewItem` with correct seam handling, subdued background, and smooth performance on desktop/phone/WASM.
-- This README is the contract; code and assistance must adhere to it.

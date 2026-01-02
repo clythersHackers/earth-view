@@ -59,10 +59,12 @@ signals:
     void groundStationsChanged();
     void satellitesChanged();
     void satelliteHovered(const QVariantMap &satelliteInfo);
+    void groundStationHovered(const QVariantMap &groundStationInfo);
 
 private:
     void ensureTexture();
     QVariantMap satelliteAt(const QPointF &pt) const;
+    QVariantMap groundStationAt(const QPointF &pt) const;
     QRectF viewRect(bool &rotated) const;
 
     QImage m_backgroundImage;
@@ -85,6 +87,7 @@ private:
         double radiusKm {0.0};
         QString id;
         QVector<GeoPoint> mask;
+        QVariantMap raw;
     };
     QVector<GroundStation> m_groundStationData;
 
@@ -100,5 +103,6 @@ private:
     };
     QVector<Satellite> m_satelliteData;
     bool m_lastHoverHadSat {false};
+    bool m_lastHoverHadGroundStation {false};
 
 };

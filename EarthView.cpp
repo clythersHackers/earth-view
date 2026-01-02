@@ -143,8 +143,10 @@ void EarthView::setGroundStations(const QVariantList &stations)
         const QVariantMap m = v.toMap();
         double lat = 0.0;
         double lon = 0.0;
+        double radiusKm = std::numeric_limits<double>::quiet_NaN();
         const bool latOk = readField(m, {"lat", "Lat"}, lat);
         const bool lonOk = readField(m, {"lon", "Lon"}, lon);
+        readField(m, {"radius_km", "RadiusKm", "radiusKm", "radius", "Radius"}, radiusKm);
         QVector<GeoPoint> mask = parseMask(m.value(QStringLiteral("mask")));
         if (mask.isEmpty())
             mask = parseMask(m.value(QStringLiteral("boundary")));
@@ -172,9 +174,29 @@ void EarthView::setGroundStations(const QVariantList &stations)
         gs.lat = lat;
         gs.lon = lon;
         gs.mask = mask;
+        if (std::isfinite(radiusKm))
+            gs.radiusKm = radiusKm;
         const QVariant idVar = m.value(QStringLiteral("id"), m.value(QStringLiteral("ID")));
         if (idVar.isValid())
             gs.id = idVar.toString();
+        gs.raw = m;
+        if (!gs.id.isEmpty())
+            gs.raw.insert(QStringLiteral("ID"), gs.id);
+        gs.raw.insert(QStringLiteral("Lat"), gs.lat);
+        gs.raw.insert(QStringLiteral("Lon"), gs.lon);
+        if (std::isfinite(gs.radiusKm))
+            gs.raw.insert(QStringLiteral("RadiusKm"), gs.radiusKm);
+        if (!gs.mask.isEmpty()) {
+            QVariantList maskVar;
+            maskVar.reserve(gs.mask.size());
+            for (const auto &p : gs.mask) {
+                QVariantMap point;
+                point.insert(QStringLiteral("Lat"), p.lat);
+                point.insert(QStringLiteral("Lon"), p.lon);
+                maskVar.append(point);
+            }
+            gs.raw.insert(QStringLiteral("Mask"), maskVar);
+        }
         m_groundStationData.push_back(gs);
     }
 
@@ -807,13 +829,22 @@ void EarthView::releaseResources()
 void EarthView::hoverMoveEvent(QHoverEvent *event)
 {
     const QVariantMap sat = satelliteAt(event->position());
+    const QVariantMap gs = groundStationAt(event->position());
     const bool hasSat = !sat.isEmpty();
+    const bool hasGs = !gs.isEmpty();
     if (hasSat) {
         emit satelliteHovered(sat);
         m_lastHoverHadSat = true;
     } else if (m_lastHoverHadSat) {
         emit satelliteHovered(QVariantMap());
         m_lastHoverHadSat = false;
+    }
+    if (hasGs) {
+        emit groundStationHovered(gs);
+        m_lastHoverHadGroundStation = true;
+    } else if (m_lastHoverHadGroundStation) {
+        emit groundStationHovered(QVariantMap());
+        m_lastHoverHadGroundStation = false;
     }
     event->accept();
 }
@@ -825,12 +856,18 @@ void EarthView::hoverLeaveEvent(QHoverEvent *event)
         emit satelliteHovered(QVariantMap());
         m_lastHoverHadSat = false;
     }
+    if (m_lastHoverHadGroundStation) {
+        emit groundStationHovered(QVariantMap());
+        m_lastHoverHadGroundStation = false;
+    }
 }
 
 void EarthView::mouseMoveEvent(QMouseEvent *event)
 {
     const QVariantMap sat = satelliteAt(event->position());
+    const QVariantMap gs = groundStationAt(event->position());
     const bool hasSat = !sat.isEmpty();
+    const bool hasGs = !gs.isEmpty();
     if (hasSat) {
         emit satelliteHovered(sat);
         m_lastHoverHadSat = true;
@@ -838,19 +875,35 @@ void EarthView::mouseMoveEvent(QMouseEvent *event)
         emit satelliteHovered(QVariantMap());
         m_lastHoverHadSat = false;
     }
+    if (hasGs) {
+        emit groundStationHovered(gs);
+        m_lastHoverHadGroundStation = true;
+    } else if (m_lastHoverHadGroundStation) {
+        emit groundStationHovered(QVariantMap());
+        m_lastHoverHadGroundStation = false;
+    }
     QQuickItem::mouseMoveEvent(event);
 }
 
 void EarthView::mousePressEvent(QMouseEvent *event)
 {
     const QVariantMap sat = satelliteAt(event->position());
+    const QVariantMap gs = groundStationAt(event->position());
     const bool hasSat = !sat.isEmpty();
+    const bool hasGs = !gs.isEmpty();
     if (hasSat) {
         emit satelliteHovered(sat);
         m_lastHoverHadSat = true;
     } else if (m_lastHoverHadSat) {
         emit satelliteHovered(QVariantMap());
         m_lastHoverHadSat = false;
+    }
+    if (hasGs) {
+        emit groundStationHovered(gs);
+        m_lastHoverHadGroundStation = true;
+    } else if (m_lastHoverHadGroundStation) {
+        emit groundStationHovered(QVariantMap());
+        m_lastHoverHadGroundStation = false;
     }
     QQuickItem::mousePressEvent(event);
 }
@@ -864,13 +917,22 @@ void EarthView::touchEvent(QTouchEvent *event)
 
     const QPointF pt = event->points().first().position();
     const QVariantMap sat = satelliteAt(pt);
+    const QVariantMap gs = groundStationAt(pt);
     const bool hasSat = !sat.isEmpty();
+    const bool hasGs = !gs.isEmpty();
     if (hasSat) {
         emit satelliteHovered(sat);
         m_lastHoverHadSat = true;
     } else if (m_lastHoverHadSat) {
         emit satelliteHovered(QVariantMap());
         m_lastHoverHadSat = false;
+    }
+    if (hasGs) {
+        emit groundStationHovered(gs);
+        m_lastHoverHadGroundStation = true;
+    } else if (m_lastHoverHadGroundStation) {
+        emit groundStationHovered(QVariantMap());
+        m_lastHoverHadGroundStation = false;
     }
     event->accept();
 }
@@ -916,6 +978,51 @@ QVariantMap EarthView::satelliteAt(const QPointF &pt) const
             best = sat.raw;
             if (!sat.id.isEmpty())
                 best.insert(QStringLiteral("ID"), sat.id);
+        }
+    }
+    return best;
+}
+
+QVariantMap EarthView::groundStationAt(const QPointF &pt) const
+{
+    const qreal maxDistPx = 12.0;
+    QVariantMap best;
+    qreal bestDist2 = maxDistPx * maxDistPx;
+
+    bool rotated = false;
+    const QRectF rect = viewRect(rotated);
+    const QRectF bounds = boundingRect();
+
+    auto project = [&](double latDeg, double lonDeg) -> QPointF {
+        qreal x = rect.x() + ((lonDeg + 180.0) / 360.0) * rect.width();
+        qreal y = rect.y() + ((90.0 - latDeg) / 180.0) * rect.height();
+        qreal localOffset = (m_centerLongitude / 360.0) * rect.width();
+        x -= localOffset;
+        while (x < rect.x()) x += rect.width();
+        while (x > rect.x() + rect.width()) x -= rect.width();
+        return QPointF(x, y);
+    };
+
+    auto inverseRotateIfNeeded = [&](const QPointF &p) -> QPointF {
+        if (!rotated)
+            return p;
+        const QPointF c = bounds.center();
+        const qreal dx = p.x() - c.x();
+        const qreal dy = p.y() - c.y();
+        return QPointF(c.x() - dy, c.y() + dx);
+    };
+    const QPointF queryPt = inverseRotateIfNeeded(pt);
+
+    for (const auto &gs : m_groundStationData) {
+        const QPointF c = project(gs.lat, gs.lon);
+        const qreal dx = c.x() - queryPt.x();
+        const qreal dy = c.y() - queryPt.y();
+        const qreal d2 = dx * dx + dy * dy;
+        if (d2 < bestDist2) {
+            bestDist2 = d2;
+            best = gs.raw;
+            if (!gs.id.isEmpty())
+                best.insert(QStringLiteral("ID"), gs.id);
         }
     }
     return best;

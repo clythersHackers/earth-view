@@ -11,14 +11,15 @@ Window {
 
     color: "#10141c"
     property var hoveredSatellite: null
+    property var hoveredGroundStation: null
 
     function formatSatellite(info) {
         if (!info || Object.keys(info).length === 0)
-            return "Hover a satellite to see details"
+            return ""
         let parts = []
         const idVal = info.ID ?? info.id ?? info.Id
         if (idVal !== undefined)
-            parts.push("ID " + idVal)
+            parts.push("SAT " + idVal)
         if (info.Lat !== undefined && info.Lon !== undefined)
             parts.push("lat " + Number(info.Lat).toFixed(3) + " lon " + Number(info.Lon).toFixed(3))
         if (info.Alt !== undefined)
@@ -30,11 +31,39 @@ Window {
         return parts.join("  •  ")
     }
 
+    function formatGroundStation(info) {
+        if (!info || Object.keys(info).length === 0)
+            return ""
+        let parts = []
+        const idVal = info.ID ?? info.id ?? info.Id
+        if (idVal !== undefined)
+            parts.push("GS " + idVal)
+        else
+            parts.push("Ground Station")
+        if (info.Lat !== undefined && info.Lon !== undefined)
+            parts.push("lat " + Number(info.Lat).toFixed(3) + " lon " + Number(info.Lon).toFixed(3))
+        const radius = info.RadiusKm ?? info.radius_km ?? info.radiusKm ?? info.radius
+        if (radius !== undefined)
+            parts.push("radius " + Number(radius).toFixed(1) + " km")
+        return parts.join("  •  ")
+    }
+
+    function formatBadge() {
+        const satText = formatSatellite(hoveredSatellite)
+        if (satText.length > 0)
+            return satText
+        const gsText = formatGroundStation(hoveredGroundStation)
+        if (gsText.length > 0)
+            return gsText
+        return "Hover a satellite or ground station to see details"
+    }
+
     EarthView {
         id: earth
         objectName: "earthView"
         anchors.fill: parent
         onSatelliteHovered: function(satelliteInfo) { hoveredSatellite = satelliteInfo }
+        onGroundStationHovered: function(groundStationInfo) { hoveredGroundStation = groundStationInfo }
     }
 
     Rectangle {
@@ -58,7 +87,7 @@ Window {
             color: "#dfe6f3"
             font.pixelSize: 13
             wrapMode: Text.NoWrap
-            text: formatSatellite(hoveredSatellite)
+            text: formatBadge()
         }
     }
 
