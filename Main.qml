@@ -1,15 +1,23 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Controls.Material
 import EarthView
 
-Window {
+ApplicationWindow {
     width: 640
     height: 480
     visible: true
     title: qsTr("Hello World")
 
-    color: "#10141c"
+    // Follow desktop theme using Material style
+    Material.theme: Material.System
+    Material.primary: Material.Indigo
+    Material.accent: Material.Indigo
+    color: Material.background
+    readonly property color textColor: Material.foreground
+    readonly property color surfaceColor: Qt.rgba(Material.background.r, Material.background.g, Material.background.b, 0.95)
+    readonly property color borderColor: Material.dividerColor
     property var hoveredSatellite: null
     property var hoveredGroundStation: null
 
@@ -72,9 +80,9 @@ Window {
         anchors.top: parent.top
         anchors.margins: 8
         radius: 6
-        color: "#1c2331"
-        opacity: 0.9
-        border.color: "#263143"
+        color: surfaceColor
+        opacity: 0.95
+        border.color: borderColor
         border.width: 1
         z: 2
         width: hoverText.implicitWidth + 16
@@ -84,7 +92,7 @@ Window {
             id: hoverText
             anchors.fill: parent
             anchors.margins: 8
-            color: "#dfe6f3"
+            color: textColor
             font.pixelSize: 13
             wrapMode: Text.NoWrap
             text: formatBadge()
@@ -100,8 +108,8 @@ Window {
         }
         height: 52
         radius: 6
-        color: "#1c2331"
-        opacity: 0.9
+        color: surfaceColor
+        opacity: 0.95
 
         RowLayout {
             anchors.fill: parent
@@ -110,7 +118,7 @@ Window {
 
             Text {
                 text: "Center"
-                color: "#dfe6f3"
+                color: textColor
                 font.pixelSize: 14
                 width: 80
                 verticalAlignment: Text.AlignVCenter
@@ -129,7 +137,7 @@ Window {
             TextField {
                 id: lonField
                 text: earth.centerLongitude.toFixed(1)
-                color: "#dfe6f3"
+                color: textColor
                 font.pixelSize: 14
                 Layout.preferredWidth: 70
                 Layout.alignment: Qt.AlignVCenter
