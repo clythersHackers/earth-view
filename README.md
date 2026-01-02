@@ -11,7 +11,8 @@
 ### Core Principles
 - Single renderer: one custom C++ `QQuickItem` draws background and overlays via the GPU scenegraph (no Canvas/runtime SVG, no per-satellite QML items).
 - Flat equirectangular projection: latitude → Y, longitude → X; polar distortion is acceptable.
-- Viewer owns projection; NATS data is provided in WGS84/ECEF. Projection, centring, and seam handling live in the view.
+- Viewer owns projection; data is provided in WGS84/ECEF. Projection, centring, and seam handling live in the view.
+- Demo application derives data inputs via NATS (subscription & KV), but the view is transport-agnostic.
 
 ### Earth Background
 - Single bundled RGBA PNG, equirectangular 2:1, desaturated/low contrast; land mid-grey and partially transparent, ocean more transparent, no labels/borders.
