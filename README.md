@@ -64,9 +64,32 @@ All geometry is expected in WGS84 lat/lon; EarthView handles projection, seam-sp
 - Altitude does not affect map position but does affect coverage & visibility.
 
 ### Ground Stations (NATS KV + pub/sub)
-- KV stores static definitions: lat/lon/alt, masks, optionally precomputed footprint polygons (e.g., 72 points = 5deg).
-- Pub/sub carries dynamic status: availability, contact state, alarms.
+- KV stores semi-static definitions: lat/lon/alt, masks, optionally precomputed footprint polygons (e.g., 72 points = 5deg).
 - Geometry published in NATS is WGS84 lat/lon, never screen-space.
+
+Example content (as JSON for readability)
+
+```json
+
+{
+  "id": "gnd_london",
+  "name": "London",
+  "lat": 51.5074,
+  "lon": -0.1278,
+  "alt_m": 500,
+  "avg_sat_alt_km": 763.8349771950732,
+  "radius_km": 2976.918665134186,
+  "boundary": [
+    {"lat": 78.3, "lon": -0.1},
+    {"lat": 78.2, "lon": 4.8},
+    …
+    {"lat": 78.2, "lon": -5.1}
+  ],
+  "computed_at": 1.736268e+09
+}
+```
+
+Renderer should use only the boundary points for footprint rendering.
 
 ### View State (Local Only)
 - Per-user/device, not shared: `centerLongitude`, zoom (if supported), aspect-ratio dependent behaviour, selection state, declutter level.
