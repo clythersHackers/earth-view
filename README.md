@@ -1,5 +1,7 @@
 # Earth Overview Renderer (Qt Quick)
 
+<img src="images/screenshot.png" width="600" alt="Main UI screenshot">
+
 ## Purpose
 - Flat Earth overview for satellite monitoring: satellites, ground tracks (past/future), coverage/visibility shapes, ground stations, optional day/night terminator.
 - Operator overview, not a GIS/map app; aims for correctness, deterministic behaviour, and smooth performance on phones and WASM with minimal UI.
