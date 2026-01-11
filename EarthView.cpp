@@ -274,7 +274,7 @@ QRectF EarthView::viewRect(bool &rotated) const
 {
     const QRectF bounds = boundingRect();
     constexpr qreal targetAspect = 2.0; // 360x180 degrees -> 2:1
-    rotated = m_rotatePortrait && bounds.height() > bounds.width();
+    rotated = m_rotatePortrait;
 
     const qreal availW = rotated ? bounds.height() : bounds.width();
     const qreal availH = rotated ? bounds.width() : bounds.height();
