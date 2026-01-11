@@ -9,6 +9,7 @@
 #include <QHoverEvent>
 #include <QMouseEvent>
 #include <QTouchEvent>
+#include <QHash>
 #include <cmath>
 #include <algorithm>
 
@@ -262,6 +263,13 @@ void EarthView::setSatellites(const QVariantList &sats)
     update();
 }
 
+void EarthView::setActiveContacts(const QVariantList &contacts)
+{
+    m_activeContacts = contacts;
+    emit activeContactsChanged();
+    update();
+}
+
 QRectF EarthView::viewRect(bool &rotated) const
 {
     const QRectF bounds = boundingRect();
@@ -307,6 +315,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
     QSGGeometryNode *satNode = nullptr;
     QSGGeometryNode *satPastNode = nullptr;
     QSGGeometryNode *satFutureNode = nullptr;
+    QSGGeometryNode *contactNode = nullptr;
 
     if (!root) {
         root = new QSGNode();
@@ -340,6 +349,7 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
         const QColor satFutureColor = QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 220);
         const QColor satColor = QColor(satPastColor.red(), satPastColor.green(), satPastColor.blue(), 240); // dots match past-track hue
         const QColor gsColor = QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 235);
+        const QColor contactColor = QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 255);
         bool doRotate = false;
         const QRectF bounds = boundingRect();
         const QRectF rect = viewRect(doRotate);
@@ -403,6 +413,10 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
                     }
                     if (!satFutureNode && c == satFutureColor) {
                         satFutureNode = geom;
+                        continue;
+                    }
+                    if (!contactNode && c == contactColor && mode == QSGGeometry::DrawTriangles) {
+                        contactNode = geom;
                         continue;
                     }
                 }
@@ -650,6 +664,113 @@ QSGNode *EarthView::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
             }
         return pts;
     };
+
+    // Active contacts (GS <-> satellite)
+    if (m_activeContacts.isEmpty() || m_groundStationData.isEmpty() || m_satelliteData.isEmpty()) {
+        if (contactNode) {
+            contentRoot->removeChildNode(contactNode);
+            delete contactNode;
+            contactNode = nullptr;
+        }
+    } else {
+        if (!contactNode) {
+            contactNode = new QSGGeometryNode();
+            auto *geom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
+            geom->setDrawingMode(QSGGeometry::DrawTriangles);
+            contactNode->setGeometry(geom);
+            contactNode->setFlag(QSGNode::OwnsGeometry);
+
+            auto *mat = new QSGFlatColorMaterial();
+            mat->setColor(contactColor);
+            contactNode->setMaterial(mat);
+            contactNode->setFlag(QSGNode::OwnsMaterial);
+            contentRoot->appendChildNode(contactNode);
+        }
+
+        QHash<QString, GeoPoint> satIndex;
+        satIndex.reserve(m_satelliteData.size());
+        for (const auto &sat : m_satelliteData) {
+            QString id = sat.id;
+            if (id.isEmpty()) {
+                const QVariant idVar = sat.raw.value(QStringLiteral("ID"), sat.raw.value(QStringLiteral("id")));
+                if (idVar.isValid())
+                    id = idVar.toString();
+            }
+            if (id.isEmpty())
+                continue;
+            satIndex.insert(id, GeoPoint{sat.lat, sat.lon});
+        }
+
+        QHash<QString, GeoPoint> gsIndex;
+        gsIndex.reserve(m_groundStationData.size());
+        for (const auto &gs : m_groundStationData) {
+            QString id = gs.id;
+            if (id.isEmpty()) {
+                const QVariant idVar = gs.raw.value(QStringLiteral("id"), gs.raw.value(QStringLiteral("ID")));
+                if (idVar.isValid())
+                    id = idVar.toString();
+            }
+            if (id.isEmpty())
+                continue;
+            gsIndex.insert(id, GeoPoint{gs.lat, gs.lon});
+        }
+
+        QVector<QPointF> segments;
+        const qreal w = rect.width();
+        const qreal lineHalfWidth = 2.0;
+        auto addSegment = [&](QPointF a, QPointF b) {
+            qreal dx = b.x() - a.x();
+            if (dx > w / 2)
+                b.rx() -= w;
+            else if (dx < -w / 2)
+                b.rx() += w;
+            if (std::abs(b.x() - a.x()) > w)
+                return;
+            const qreal vx = b.x() - a.x();
+            const qreal vy = b.y() - a.y();
+            const qreal len = std::hypot(vx, vy);
+            if (len <= 0.01)
+                return;
+            const qreal nx = -vy / len;
+            const qreal ny = vx / len;
+            const QPointF offset(nx * lineHalfWidth, ny * lineHalfWidth);
+            const QPointF a1 = a + offset;
+            const QPointF a2 = a - offset;
+            const QPointF b1 = b + offset;
+            const QPointF b2 = b - offset;
+            segments.append(a1);
+            segments.append(a2);
+            segments.append(b1);
+            segments.append(b1);
+            segments.append(a2);
+            segments.append(b2);
+        };
+
+        for (const QVariant &entryVar : m_activeContacts) {
+            const QVariantMap entry = entryVar.toMap();
+            if (entry.isEmpty())
+                continue;
+            const QString gsId = entry.value(QStringLiteral("gs_id"), entry.value(QStringLiteral("gsId"))).toString();
+            const QString satId = entry.value(QStringLiteral("sat_id"), entry.value(QStringLiteral("satId"))).toString();
+            if (gsId.isEmpty() || satId.isEmpty())
+                continue;
+            if (!gsIndex.contains(gsId) || !satIndex.contains(satId))
+                continue;
+            const GeoPoint gs = gsIndex.value(gsId);
+            const GeoPoint sat = satIndex.value(satId);
+            const QPointF a = projectWrapped(gs.lat, gs.lon);
+            const QPointF b = projectWrapped(sat.lat, sat.lon);
+            addSegment(a, b);
+        }
+
+        QSGGeometry *geom = contactNode->geometry();
+        geom->allocate(segments.size());
+        geom->setDrawingMode(QSGGeometry::DrawTriangles);
+        QSGGeometry::Point2D *v = geom->vertexDataAsPoint2D();
+        for (int i = 0; i < segments.size(); ++i)
+            v[i].set(segments[i].x(), segments[i].y());
+        contactNode->markDirty(QSGNode::DirtyGeometry);
+    }
 
     auto findClosestSatellite = [&](const QPointF &pt) -> QVariantMap {
         const qreal maxDistPx = 12.0;

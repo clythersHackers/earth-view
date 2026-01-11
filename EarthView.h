@@ -27,6 +27,7 @@ public:
     Q_PROPERTY(QColor accentColor READ accentColor WRITE setAccentColor NOTIFY accentColorChanged)
     Q_PROPERTY(QVariantList groundStations READ groundStations WRITE setGroundStations NOTIFY groundStationsChanged)
     Q_PROPERTY(QVariantList satellites READ satellites WRITE setSatellites NOTIFY satellitesChanged)
+    Q_PROPERTY(QVariantList activeContacts READ activeContacts WRITE setActiveContacts NOTIFY activeContactsChanged)
 
     explicit EarthView(QQuickItem *parent = nullptr);
 
@@ -48,6 +49,8 @@ public:
     QVariantList satellites() const { return m_satellites; }
     void setSatellites(const QVariantList &sats);
 
+    QVariantList activeContacts() const { return m_activeContacts; }
+    void setActiveContacts(const QVariantList &contacts);
 
 
 protected:
@@ -67,6 +70,7 @@ signals:
     void accentColorChanged();
     void groundStationsChanged();
     void satellitesChanged();
+    void activeContactsChanged();
     void satelliteHovered(const QVariantMap &satelliteInfo);
     void groundStationHovered(const QVariantMap &groundStationInfo);
 
@@ -85,6 +89,7 @@ private:
     QColor m_accentColor {QColor(90, 210, 255)}; // default pale/electric blue
     QVariantList m_groundStations;
     QVariantList m_satellites;
+    QVariantList m_activeContacts;
 
     struct GeoPoint {
         double lat {0.0};
