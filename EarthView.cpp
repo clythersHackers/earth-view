@@ -7,6 +7,7 @@
 #include <QSGGeometryNode>
 #include <QSGFlatColorMaterial>
 #include <QHoverEvent>
+#include <QEventPoint>
 #include <QMouseEvent>
 #include <QTouchEvent>
 #include <QHash>
@@ -1049,6 +1050,21 @@ void EarthView::mousePressEvent(QMouseEvent *event)
     QQuickItem::mousePressEvent(event);
 }
 
+void EarthView::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    if (event->button() != Qt::LeftButton) {
+        QQuickItem::mouseDoubleClickEvent(event);
+        return;
+    }
+
+    const QVariantMap sat = satelliteAt(event->position());
+    const QVariantMap gs = groundStationAt(event->position());
+    if (!sat.isEmpty() || !gs.isEmpty()) {
+        emit itemTapped(sat, gs);
+    }
+    QQuickItem::mouseDoubleClickEvent(event);
+}
+
 void EarthView::touchEvent(QTouchEvent *event)
 {
     if (event->points().isEmpty()) {
@@ -1059,21 +1075,11 @@ void EarthView::touchEvent(QTouchEvent *event)
     const QPointF pt = event->points().first().position();
     const QVariantMap sat = satelliteAt(pt);
     const QVariantMap gs = groundStationAt(pt);
-    const bool hasSat = !sat.isEmpty();
-    const bool hasGs = !gs.isEmpty();
-    if (hasSat) {
-        emit satelliteHovered(sat);
-        m_lastHoverHadSat = true;
-    } else if (m_lastHoverHadSat) {
-        emit satelliteHovered(QVariantMap());
-        m_lastHoverHadSat = false;
-    }
-    if (hasGs) {
-        emit groundStationHovered(gs);
-        m_lastHoverHadGroundStation = true;
-    } else if (m_lastHoverHadGroundStation) {
-        emit groundStationHovered(QVariantMap());
-        m_lastHoverHadGroundStation = false;
+    if (event->points().size() == 1 && (!sat.isEmpty() || !gs.isEmpty())) {
+        const auto state = event->points().first().state();
+        if (state == QEventPoint::Released) {
+            emit itemTapped(sat, gs);
+        }
     }
     event->accept();
 }

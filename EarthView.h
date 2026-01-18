@@ -61,6 +61,7 @@ protected:
     void hoverLeaveEvent(QHoverEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
     void touchEvent(QTouchEvent *event) override;
 
 signals:
@@ -73,6 +74,7 @@ signals:
     void activeContactsChanged();
     void satelliteHovered(const QVariantMap &satelliteInfo);
     void groundStationHovered(const QVariantMap &groundStationInfo);
+    void itemTapped(const QVariantMap &satelliteInfo, const QVariantMap &groundStationInfo);
 
 private:
     void ensureTexture();
