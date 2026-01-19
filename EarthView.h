@@ -52,6 +52,9 @@ public:
     QVariantList activeContacts() const { return m_activeContacts; }
     void setActiveContacts(const QVariantList &contacts);
 
+    Q_INVOKABLE QVariantMap satelliteAtPoint(qreal x, qreal y) const;
+    Q_INVOKABLE QVariantMap groundStationAtPoint(qreal x, qreal y) const;
+
 
 protected:
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *) override;

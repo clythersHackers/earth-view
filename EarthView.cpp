@@ -7,7 +7,6 @@
 #include <QSGGeometryNode>
 #include <QSGFlatColorMaterial>
 #include <QHoverEvent>
-#include <QEventPoint>
 #include <QMouseEvent>
 #include <QTouchEvent>
 #include <QHash>
@@ -23,7 +22,7 @@ EarthView::EarthView(QQuickItem *parent)
     setFlag(QQuickItem::ItemHasContents, true);
     setAcceptHoverEvents(true);
     setAcceptedMouseButtons(Qt::AllButtons);
-    setAcceptTouchEvents(true);
+    setAcceptTouchEvents(false);
     // The resource is bundled by the QML module under /EarthView/.
     m_backgroundImage = QImage(QStringLiteral(":/EarthView/assets/earth/earth-landmask-2048.png"));
 }
@@ -1067,21 +1066,17 @@ void EarthView::mouseDoubleClickEvent(QMouseEvent *event)
 
 void EarthView::touchEvent(QTouchEvent *event)
 {
-    if (event->points().isEmpty()) {
-        event->ignore();
-        return;
-    }
+    event->ignore();
+}
 
-    const QPointF pt = event->points().first().position();
-    const QVariantMap sat = satelliteAt(pt);
-    const QVariantMap gs = groundStationAt(pt);
-    if (event->points().size() == 1 && (!sat.isEmpty() || !gs.isEmpty())) {
-        const auto state = event->points().first().state();
-        if (state == QEventPoint::Released) {
-            emit itemTapped(sat, gs);
-        }
-    }
-    event->accept();
+QVariantMap EarthView::satelliteAtPoint(qreal x, qreal y) const
+{
+    return satelliteAt(QPointF(x, y));
+}
+
+QVariantMap EarthView::groundStationAtPoint(qreal x, qreal y) const
+{
+    return groundStationAt(QPointF(x, y));
 }
 
 QVariantMap EarthView::satelliteAt(const QPointF &pt) const
